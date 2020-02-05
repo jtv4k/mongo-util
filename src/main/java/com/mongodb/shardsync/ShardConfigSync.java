@@ -257,7 +257,8 @@ public class ShardConfigSync {
 		for (Iterator<Document> sourceChunksIterator = sourceChunks.iterator(); sourceChunksIterator.hasNext();) {
 
 			Document chunk = sourceChunksIterator.next();
-			// logger.debug("sourceChunk: " + chunk);
+			logger.debug("sourceChunk: " + chunk);
+
 			String ns = chunk.getString("ns");
 			Namespace sourceNs = new Namespace(ns);
 
@@ -275,6 +276,7 @@ public class ShardConfigSync {
 			Document query = new Document("_id", chunk.get("_id"));
 			query.append("min", chunk.get("min"));
 			query.append("max", chunk.get("max"));
+
 			long count = destChunksColl.countDocuments(query);
 			if (count > 0) {
 				logger.debug(String.format("Chunk already exists on destination, skipping: _id: %s, min: %s, max: %s",
@@ -284,6 +286,7 @@ public class ShardConfigSync {
 
 			Document max = (Document) chunk.get("max");
 			boolean maxKey = false;
+
 			for (Iterator i = max.values().iterator(); i.hasNext();) {
 				Object next = i.next();
 				if (next instanceof MaxKey) {
@@ -298,7 +301,7 @@ public class ShardConfigSync {
 
 			splitCommand.put("split", ns);
 			splitCommand.put("middle", max);
-			// logger.debug("splitCommand: " + splitCommand);
+			logger.debug("splitCommand: " + splitCommand);
 
 			try {
 				destShardClient.adminCommand(splitCommand);
@@ -308,12 +311,22 @@ public class ShardConfigSync {
 
 			count = destChunksColl.countDocuments(new Document("_id", chunk.get("_id")));
 			if (count == 1) {
-				// logger.debug("Chunk created: " + chunk.get("_id"));
+				logger.debug("Chunk created: " + chunk.get("_id"));
 			} else {
 				long count2 = destChunksColl
 						.countDocuments(new Document("min", chunk.get("min")).append("ns", chunk.get("ns")));
-				logger.debug("Chunk create failed, count2: " + count2);
 
+				logger.debug("Chunk create failed (count " + count + "), count2: " + count2);
+				logger.debug(String.format("Expected: _id: %s, min: %s, max: %s",
+						chunk.get("_id"), chunk.get("min"), chunk.get("max")));
+
+				if (count2 > 0) {
+					FindIterable<Document> check = destChunksColl.find(new Document("min", chunk.get("min")).append("ns", chunk.get("ns")));
+					for(Iterator<Document> i = check.iterator(); i.hasNext(); ) {
+						Document doc = i.next();
+						logger.debug(String.format("Counted: _id: %s, min: %s, max: %s", doc.get("_id"), doc.get("min"), doc.get("max")));
+					}
+				}
 			}
 
 			lastNs = ns;
@@ -933,7 +946,7 @@ public class ShardConfigSync {
 
 			MongoClient primaryClient = sourceShardClient.getShardMongoClient(primary);
 			if (primaryClient == null) {
-				logger.debug("MongoClient is null, will fail");
+				logger.debug("MongoClient is null for primary database " + databaseName + " on primary " + primary + ", will fail");
 			}
 
 			List<String> primaryDatabasesList = new ArrayList<String>();
